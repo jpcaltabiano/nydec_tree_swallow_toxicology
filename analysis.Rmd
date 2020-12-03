@@ -1,0 +1,123 @@
+---
+title: "NYSDEC tree swallows"
+author: "Joseph Caltabiano"
+date: "11/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(tidyverse)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+note - example chart has 39 examples
+1) PCA analysis of data
+  structural size - the first pcomp on covariances of bill length/depth/width, head length, tarsus length
+
+```{r}
+data = read.csv('swallows_sample.csv')[1:28,] # mean data from our study
+ex.data = read.csv('example_data.csv') # data from thesis study
+# names(data) # get column names
+# names(ex.data)
+```
+
+```{r}
+format_data = function(df) {
+  # subset the data for each age into a separate df
+  df.hatch = data.frame(subset(df, select=c(7, 10, 13, 16, 19, 22)))
+  df.day7  = data.frame(subset(df, select=c(8, 11, 14, 17, 20, 23)))
+  df.day12 = data.frame(subset(df, select=c(9, 12, 15, 18, 21, 24)))
+  
+  # rename col names
+  names(df.hatch) = c("w", "billl", "billw", "billd", "headl", "tarsl")
+  names(df.day7)  = c("w", "billl", "billw", "billd", "headl", "tarsl")
+  names(df.day12) = c("w", "billl", "billw", "billd", "headl", "tarsl")
+  
+  # 
+  df = rbind(df.hatch, df.day7, df.day12)
+  return( drop_na(data.frame(sapply(df, as.double))) )
+}
+
+format_example = function(df) {
+  # select columns of interest
+  df = data.frame(subset(df, select=c(12, 13, 14, 15, 16, 19, 6)))
+  
+  # rename col names
+  names(df) = c("billl", "billw", "billd", "headl", "tarsl", "w", "bird")
+  
+  # convert all num data from string to double
+  df[,1:6] = sapply(df[,1:6], as.double)
+  
+  # drop rows with NA and empty values
+  df = drop_na(data.frame(df))
+  
+  # select only data for blue birds
+  return( df[df[1:270,]$bird %like% "luebird",1:6] )
+}
+
+data = format_data(data)
+ex.data = format_example(ex.data)
+```
+
+```{r}
+# Computes the first principal component and 
+# @param df: a data.frame
+# @return: a data.frame with 2 columns: x = structural size, y = weight
+get_pcomp = function(df) {
+  # set random seed for consistency in results
+  set.seed(1)
+  
+  # compute principal components and print results
+  pr.out = prcomp(df, scale. = T)
+  print(summary(pr.out))
+  
+  # set struct.size to the first principal component vector
+  struct.size = pr.out$x[,1]
+  
+  # add struct.size as a column to the data
+  lr.df = data.frame(df, struct.size)
+  
+  # compute regression and print out results summary
+  lr.out = lm(lr.df$w ~ poly(lr.df$struct.size, 2), data=lr.df)
+  print(summary(lr.out))
+  
+  # return a data set with 2 columns: x = structural size, y = weight
+  return( data.frame(x = lr.df$struct.size, y = lr.df$w) )
+}
+
+# Plot structural size vs weight and regression line of weight~(structural size)^2
+# @param df: a data.frame
+plot_struct_size = function(df) {
+  ggplot(data=df, aes(x,y)) +
+         geom_point() +
+         geom_smooth(method="lm", formula=y~poly(x,2))
+}
+
+# Computes the residuals of the regression of weight~(structural size)^2
+# @param df: a data.frame
+# @return: a vector containing the residuals
+get_residuals = function(df) {
+  model = lm(y~poly(x,2), data=df)
+  pred = predict(model,data=df)
+  res = residuals(model)
+  return( res )
+}
+```
+
+```{r}
+# Thesis data
+df = get_pcomp(ex.data)
+plot_struct_size(df)
+data.residuals = get_residuals(df)
+```
+
+```{r}
+# Our data
+df = get_pcomp(data)
+plot_struct_size(df)
+data.residuals = get_residuals(df)
+data.residuals
+```
